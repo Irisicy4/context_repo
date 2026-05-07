@@ -1,6 +1,6 @@
 """
 Synthetic Visual Genome (SVG) Dataset Loader
-Loads the SVG dataset in VG format from HuggingFace: Icey444/svg5000_in_vg
+Loads the SVG dataset in VG format from HuggingFace: nnonymous/svg5000_in_vg
 
 The dataset has been pre-converted to VG format with 'sg' key for direct use with SceneGraphData.
 """
@@ -15,7 +15,7 @@ def load_svg(num_samples: Optional[int] = None, split: str = "train_500_augmente
     """
     Load SVG dataset in VG format.
 
-    Loads from Icey444/svg5000_in_vg which has pre-converted SVG data to VG format
+    Loads from nnonymous/svg5000_in_vg which has pre-converted SVG data to VG format
     with 'sg' key compatible with SceneGraphData.
 
     Args:
@@ -27,8 +27,8 @@ def load_svg(num_samples: Optional[int] = None, split: str = "train_500_augmente
     Returns:
         List of sample dictionaries with 'sg' key in VG format, images, and metadata.
     """
-    print(f"Loading SVG dataset in VG format from Icey444/svg5000_in_vg [{split}]...")
-    dataset = load_dataset("Icey444/svg5000_in_vg", split=split)
+    print(f"Loading SVG dataset in VG format from nnonymous/svg5000_in_vg [{split}]...")
+    dataset = load_dataset("nnonymous/svg5000_in_vg", split=split)
     
     # Only load the requested number of samples
     num_to_load = num_samples if num_samples is not None else len(dataset)
@@ -201,7 +201,7 @@ if __name__ == "__main__":
 # Add a url field to every row with a direct HTTP download link to the image
 # COCO ("train2017/000000554750.jpg"): already handled by our code → http://images.cocodataset.org/train2017/000000554750.jpg — but agent can include it explicitly
 # VG Flickr ("2361014.jpg"): → https://cs.stanford.edu/people/rak248/VG_100K/2361014.jpg
-# ADE20K: host images in the same HF repo (e.g. ade20k_images/ subfolder) and provide: https://huggingface.co/datasets/Icey444/svg5000_in_vg/resolve/main/ade20k_images/ADE_train_00018793.jpg
+# ADE20K: host images in the same HF repo (e.g. ade20k_images/ subfolder) and provide: https://huggingface.co/datasets/nnonymous/svg5000_in_vg/resolve/main/ade20k_images/ADE_train_00018793.jpg
 # This URL is only read by grader/faithscore/eval.py — the examiner pipeline uses the HF image column directly
 # 5. Region descriptions (optional, nice to have)
 

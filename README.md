@@ -172,7 +172,7 @@ pair (so 2 entries per image with the default 2 contexts):
   dumps to `utils/.vg_cache/` on first use (~2.2 GB). Images are pulled
   per-image_id lazily.
 - **SVG** — `utils/svg.py` loads from the HuggingFace dataset
-  `Icey444/svg500_in_vg` (500 images: 100 from VG, 200 from ADE-20K,
+  `nnonymous/svg5000_in_vg` (500 images: 100 from VG, 200 from ADE-20K,
   200 from COCO).
 - **COCO** — supported via `utils/coco.py` if you have COCO annotations
   + images locally.

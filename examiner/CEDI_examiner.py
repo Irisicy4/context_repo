@@ -20,7 +20,6 @@
 
 from utils.utils import load_data
 from utils.vg import format_case_vg_compact as format_case_vg
-from utils.coco import format_case_coco
 from utils.llm import LLMChat, parse_json
 from examiner import prompt as PROMPT
 from infer.loader import load_model
@@ -463,7 +462,7 @@ Q_TYPE_MAPPING = {
 class EvalSample:
     def __init__(self, case, llm_chat_context, llm_chat_conv, eval_func):
         self.case = case
-        self.image_info = format_case_vg(case) if args.dataset in ("vg", "svg") else format_case_coco(case)
+        self.image_info = format_case_vg(case)
         self.scene_graph_data = SceneGraphData.from_dict(case)
 
         self.llm_chat_context = llm_chat_context  # GPT-5 for context generation
@@ -589,8 +588,8 @@ class EvalSample:
         Returns:
             List of contexts (either 2 new contexts, or 1 new context if previous_context provided)
         """
-        image_info = format_case_vg(case) if args.dataset in ("vg", "svg") else format_case_coco(case)
-        
+        image_info = format_case_vg(case)
+
         if previous_context is not None:
             # Generate only the second context, using the first context for diversity
             prompt = CONTEXT_PROMPT.format(image_info).strip()
