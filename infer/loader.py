@@ -76,13 +76,51 @@ def load_model(args):
         from .infer_llava import eval_model as eval_model_llava
         from transformers import LlavaForConditionalGeneration, AutoProcessor
         model = LlavaForConditionalGeneration.from_pretrained(
-            args.model_path, 
-            torch_dtype=torch.float16, 
-            low_cpu_mem_usage=True, 
+            args.model_path,
+            torch_dtype=torch.float16,
+            low_cpu_mem_usage=True,
         ).to(0)
 
         processor = AutoProcessor.from_pretrained(args.model_path)
-        return partial(eval_model_llava, model=model, processor=processor)
+
+        # Conditionally use conversation wrapper based on use_conversation flag.
+        # Without this, v18conv / v19conv ran llava as single-shot per round
+        # (no chat memory) because partial(...) doesn't hold history state.
+        use_conversation = getattr(args, 'use_conversation', False)
+
+        if use_conversation:
+            import threading as _threading
+            class LlavaConversationWrapper:
+                # History is per-thread: v19conv runs `parallel` worker threads
+                # behind a single VLM lock, so `__call__` is serialized, but the
+                # wrapper instance is shared. Storing history on `self` lets
+                # one thread's reset()/append() clobber another thread's
+                # mid-conversation state and produces garbage prompts.
+                def __init__(self, processor, model):
+                    self.processor = processor
+                    self.model = model
+                    self._tls = _threading.local()
+
+                def _history(self):
+                    h = getattr(self._tls, 'history', None)
+                    if h is None:
+                        h = []
+                        self._tls.history = h
+                    return h
+
+                def __call__(self, image_file, query):
+                    output, new_history = eval_model_llava(
+                        self.processor, self.model, image_file, query, self._history()
+                    )
+                    self._tls.history = new_history
+                    return output
+
+                def reset(self):
+                    self._tls.history = []
+
+            return LlavaConversationWrapper(processor=processor, model=model)
+        else:
+            return partial(eval_model_llava, model=model, processor=processor)
     elif "blip2" in args.model_path:
         from .infer_blip2 import eval_model as eval_model_blip2
         from transformers import Blip2Processor, Blip2ForConditionalGeneration
@@ -112,22 +150,31 @@ def load_model(args):
         use_conversation = getattr(args, 'use_conversation', False)
         
         if use_conversation:
-            # Return wrapper that manages conversation history
+            # Return wrapper that manages conversation history per-thread.
+            import threading as _threading
             class Qwen25VLConversationWrapper:
                 def __init__(self, processor, model):
                     self.processor = processor
                     self.model = model
-                    self.conversation_history = []
-                
+                    self._tls = _threading.local()
+
+                def _history(self):
+                    h = getattr(self._tls, 'history', None)
+                    if h is None:
+                        h = []
+                        self._tls.history = h
+                    return h
+
                 def __call__(self, image_file, query):
-                    output, self.conversation_history = eval_model_qwenvl2d5(
-                        self.processor, self.model, image_file, query, self.conversation_history
+                    output, new_history = eval_model_qwenvl2d5(
+                        self.processor, self.model, image_file, query, self._history()
                     )
+                    self._tls.history = new_history
                     return output
-                
+
                 def reset(self):
-                    self.conversation_history = []
-            
+                    self._tls.history = []
+
             return Qwen25VLConversationWrapper(processor=processor, model=model)
         else:
             # Return simple function without conversation history
@@ -211,22 +258,31 @@ def load_model(args):
             use_conversation = getattr(args, 'use_conversation', False)
             
             if use_conversation:
-                # Return wrapper that manages conversation history
+                # Return wrapper that manages conversation history per-thread.
+                import threading as _threading
                 class Gemma3ConversationWrapper:
                     def __init__(self, processor, model):
                         self.processor = processor
                         self.model = model
-                        self.conversation_history = []
-                    
+                        self._tls = _threading.local()
+
+                    def _history(self):
+                        h = getattr(self._tls, 'history', None)
+                        if h is None:
+                            h = []
+                            self._tls.history = h
+                        return h
+
                     def __call__(self, image_file, query):
-                        output, self.conversation_history = eval_model_gemma3(
-                            self.processor, self.model, image_file, query, self.conversation_history
+                        output, new_history = eval_model_gemma3(
+                            self.processor, self.model, image_file, query, self._history()
                         )
+                        self._tls.history = new_history
                         return output
-                    
+
                     def reset(self):
-                        self.conversation_history = []
-                
+                        self._tls.history = []
+
                 return Gemma3ConversationWrapper(processor=processor, model=model)
             else:
                 # Return simple function without conversation history
@@ -235,12 +291,17 @@ def load_model(args):
         from .infer_internvl3 import eval_model as eval_model_internvl3, split_model
         from transformers import AutoModel, AutoTokenizer
         device_map = split_model(args.model_path)
+        # use_flash_attn requires the flash_attn pip package; the qwenvl3 env
+        # doesn't have it (only a precompiled wheel-less source build is
+        # available), so default to off. Override with INTERNVL_USE_FLASH_ATTN=1.
+        import os as _os
+        _use_fa = _os.environ.get("INTERNVL_USE_FLASH_ATTN", "0") == "1"
         model = AutoModel.from_pretrained(
             args.model_path,
             torch_dtype=torch.bfloat16,
             load_in_8bit=False,
             low_cpu_mem_usage=True,
-            use_flash_attn=True,
+            use_flash_attn=_use_fa,
             trust_remote_code=True,
             device_map=device_map).eval()
         tokenizer = AutoTokenizer.from_pretrained(args.model_path, trust_remote_code=True, use_fast=False)
@@ -249,22 +310,31 @@ def load_model(args):
         use_conversation = getattr(args, 'use_conversation', False)
         
         if use_conversation:
-            # Return wrapper that manages conversation history
+            # Return wrapper that manages conversation history per-thread.
+            import threading as _threading
             class InternVL3ConversationWrapper:
                 def __init__(self, model, tokenizer):
                     self.model = model
                     self.tokenizer = tokenizer
-                    self.conversation_history = []
-                
+                    self._tls = _threading.local()
+
+                def _history(self):
+                    h = getattr(self._tls, 'history', None)
+                    if h is None:
+                        h = []
+                        self._tls.history = h
+                    return h
+
                 def __call__(self, image_file, query):
-                    output, self.conversation_history = eval_model_internvl3(
-                        self.model, self.tokenizer, image_file, query, self.conversation_history
+                    output, new_history = eval_model_internvl3(
+                        self.model, self.tokenizer, image_file, query, self._history()
                     )
+                    self._tls.history = new_history
                     return output
-                
+
                 def reset(self):
-                    self.conversation_history = []
-            
+                    self._tls.history = []
+
             return InternVL3ConversationWrapper(model=model, tokenizer=tokenizer)
         else:
             # Return simple function without conversation history
